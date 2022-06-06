@@ -137,6 +137,18 @@ public class Chip {
                 break;
             }
 
+            case 0x4000://4XNN: Skips the next instruction if VX does not equal NN
+            {int x = (opcode & 0x0F00) >> 8;
+                int nn = (opcode & 0x00FF);
+                if (V[x] != nn) {
+                    pc += 4;
+                    System.out.println("Skipping next instruction (V[" + x + "] == " + nn + ")");
+                } else {
+                    pc += 2;
+                    System.out.println("Not skipping next instruction (V[" + x + "] != " + nn + ")");
+                }
+                break;}
+
             case 0x6000: { //6XNN: Set VX to NN
                 int x = (opcode & 0x0F00) >> 8;
                 V[x] = (char) (opcode & 0x00FF);
@@ -164,9 +176,38 @@ public class Chip {
                         int vx = V[(opcode & 0x0F00) >> 8];
                         int vy = V[(opcode & 0x00F0) >> 4];
                         V[(opcode & 0x0F00) >> 8] = (char)(vx & vy);
+                        System.out.println("Set V[" + ((opcode & 0x0F00) >> 8) + "] to V[" + ((opcode & 0x0F00) >> 8) + "] & V[" + ((opcode & 0x00F0) >> 4) +"]");
                         pc += 2;
                         break;
                     }
+                    case 0x0004:
+                    {
+                        int x = (opcode & 0x0F00) >> 8;
+                        int y = (opcode & 0x00F0) >> 4;
+                        System.out.println("Adding V[" + x + "] and V[" + y + "], apply carry if needed");
+                        if(V[y] > 255 - V[x]) V[0xF] = 1;
+                        else V[0xF] = 0;
+                        V[x] = (char)((V[x] + V[y]) & 0xFF);
+                        pc += 0x2;
+                        break;
+                    }
+
+                    case 0x0005: { //VY is subtracted from VX. VF is set to 0 when there is a borrow else 1
+                        int x = (opcode & 0x0F00) >> 8;
+                        int y = (opcode & 0x00F0) >> 4;
+                        System.out.print("V[" + x + "] = " + (int)V[x] + " V[" + y + "] = " + (int)V[y] + ", ");
+                        if(V[x] > V[y]) {
+                            V[0xF] = 1;
+                            System.out.println("No Borrow");
+                        } else {
+                            V[0xF] = 0;
+                            System.out.println("Borrow");
+                        }
+                        V[x] = (char)((V[x] - V[y]) & 0xFF);
+                        pc += 2;
+                        break;
+                    }
+
                     default:
                         System.err.println("Unsupported Opcode!(0x8)");
                         System.exit(0);
@@ -190,8 +231,8 @@ public class Chip {
                 pc += 2;
 
             case 0xD000: { //DXYN: Draw a sprite (X, Y) size (8, N). Sprite is located at I
-                x = V[(opcode & 0x0F00) >> 8];
-                int y = V[(opcode & 0x00F0) >> 4];
+                x = V[(opcode & 0x0F00) >> 8] % 64;
+                int y = V[(opcode & 0x00F0) >> 4] % 32;
                 int height = opcode & 0x000F;
 
                 V[0xF] = 0;
@@ -251,7 +292,13 @@ public class Chip {
             case 0xF000:
 
                 switch (opcode & 0x00FF) {
-
+                    case 0x0018: //FX18 Sets the sound timer to VX.
+                    {
+                        x = (opcode & 0x0F00) >> 8;
+                        sound_timer = V[x];
+                        pc += 2;
+                        System.out.println("Sound timer has been set to " + sound_timer);
+                    }
                     case 0x0007: { //FX07: Set VX to the value of delay_timer
                         x = (opcode & 0x0F00) >> 8;
                         V[x] = (char) delay_timer;
