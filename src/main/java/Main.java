@@ -1,29 +1,30 @@
 import chip.Chip;
-import emu.Display;
+import emu.DisplayPanel;
+import emu.DisplayFrame;
 
 public class Main extends Thread{
     private Chip chip8;
-    private Display frame;
+    private DisplayPanel frame;
+    private DisplayFrame DisplayFrame;
 
     public Main()
     {
         chip8 = new Chip();
+        DisplayFrame = new DisplayFrame(chip8);
         chip8.init();
-        frame = new Display();
-        frame.draw(chip8.getDisplay());
-        chip8.loadProgram("C:\\Users\\Edis Hasaj\\IdeaProjects\\CHIP-8_Emulator_Java\\src\\main\\java\\Pong 2 (Pong hack) [David Winter, 1997].ch8");
+        chip8.loadProgram("C:\\Users\\Edis Hasaj\\IdeaProjects\\CHIP-8_Emulator_Java\\src\\main\\java\\Breakout (Brix hack) [David Winter, 1997].ch8");
     }
 
     public void run(){
         while (true){
             chip8.run();
-
+            chip8.setKeyBuffer(DisplayFrame.getKeyBuffer());
             if(chip8.needsRedraw()){
-                frame.draw(chip8.getDisplay());
+                DisplayFrame.drawUpdates();
                 chip8.removeDrawFlag();
             }
             try {
-                Thread.sleep(16);
+                Thread.sleep(5);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }

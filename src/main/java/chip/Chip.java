@@ -1,9 +1,20 @@
 package chip;
 
+import emu.DisplayFrame;
+
+import com.google.gson.*;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.SourceDataLine;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.lang.reflect.Array;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Random;
 
 public class Chip {
@@ -14,6 +25,7 @@ public class Chip {
      * At position 0x200: The start of every program
      */
     private char[] memory;
+
     /**
      * 16 8-bit registers.<br/>
      * They will be used to store data which is used in several operation<br/>
@@ -58,6 +70,7 @@ public class Chip {
     private byte[] display;
 
     private boolean needRedraw;
+    private static boolean beeped;
 
     /**
      * Reset the Chip 8 memory and pointers
@@ -70,6 +83,8 @@ public class Chip {
 
         stack = new char[16];
         stackPointer = 0;
+
+        beeped = false;
 
         delay_timer = 0;
         sound_timer = 0;
@@ -95,8 +110,8 @@ public class Chip {
             case 0x0000: //Multi-case
                 switch (opcode & 0x00FF) {
                     case 0x00E0: //00E0: Clear Screen
-                        System.err.println("Unsupported Opcode!");
-                        System.exit(0);
+                        display = new byte[32 * 64];
+                        pc += 0x2;
                         break;
 
                     case 0x00EE: //00EE: Returns from subroutine
@@ -106,6 +121,9 @@ public class Chip {
                         break;
 
                     default: //0NNN: Calls RCA 1802 Program at address NNN
+                        //Very few programs use this, and realistically
+                        //I cannot run this code on any modern CPUs, so
+                        //it will remain unsupported
                         System.err.println("Unsupported Opcode!(0x0)");
                         System.exit(0);
                         break;
@@ -114,6 +132,7 @@ public class Chip {
 
             case 0x1000: //1NNN: Jumps to address NNN
                 int nnn = opcode & 0x0FFF;
+                System.out.println("Jumping to address " + Integer.toHexString(nnn));
                 pc = (char) nnn;
                 break;
 
@@ -138,7 +157,8 @@ public class Chip {
             }
 
             case 0x4000://4XNN: Skips the next instruction if VX does not equal NN
-            {int x = (opcode & 0x0F00) >> 8;
+            {
+                int x = (opcode & 0x0F00) >> 8;
                 int nn = (opcode & 0x00FF);
                 if (V[x] != nn) {
                     pc += 4;
@@ -147,7 +167,8 @@ public class Chip {
                     pc += 2;
                     System.out.println("Not skipping next instruction (V[" + x + "] != " + nn + ")");
                 }
-                break;}
+                break;
+            }
 
             case 0x6000: { //6XNN: Set VX to NN
                 int x = (opcode & 0x0F00) >> 8;
@@ -170,24 +191,38 @@ public class Chip {
 
                 switch (opcode & 0x000F) {
                     case 0x0000: //8XY0: Sets VX to the value of VY.
-
+                    {
+                        int x = (opcode & 0x0F00) >> 8;
+                        int y = (opcode & 0x00F0) >> 4;
+                        V[x] = V[y];
+                        pc += 0x2;
+                        System.out.println("V[" + x + "] has been set to V[" + y + "]");
+                        break;
+                    }
                     case 0x0002: //8XY2: Sets VX to VX and VY. (Bitwise AND operation)
                     {
                         int vx = V[(opcode & 0x0F00) >> 8];
                         int vy = V[(opcode & 0x00F0) >> 4];
-                        V[(opcode & 0x0F00) >> 8] = (char)(vx & vy);
-                        System.out.println("Set V[" + ((opcode & 0x0F00) >> 8) + "] to V[" + ((opcode & 0x0F00) >> 8) + "] & V[" + ((opcode & 0x00F0) >> 4) +"]");
+                        V[(opcode & 0x0F00) >> 8] = (char) (vx & vy);
+                        System.out.println("Set V[" + ((opcode & 0x0F00) >> 8) + "] to V[" + ((opcode & 0x0F00) >> 8) + "] & V[" + ((opcode & 0x00F0) >> 4) + "]");
                         pc += 2;
                         break;
                     }
-                    case 0x0004:
-                    {
+                    case 0x0003: {//8XY3 Sets VX to VX xor VY.
+                        int x = (opcode & 0x0F00) >> 8;
+                        int y = (opcode & 0x00F0) >> 4;
+                        System.out.println("XOR-ing V[" + x + "] and V[" + y + "] and storing result to V[" + x + "]");
+                        V[x] = (char) ((V[x] ^ V[y]) & 0xFF);
+                        pc += 2;
+                        break;
+                    }
+                    case 0x0004: {
                         int x = (opcode & 0x0F00) >> 8;
                         int y = (opcode & 0x00F0) >> 4;
                         System.out.println("Adding V[" + x + "] and V[" + y + "], apply carry if needed");
-                        if(V[y] > 255 - V[x]) V[0xF] = 1;
+                        if (V[y] > 255 - V[x]) V[0xF] = 1;
                         else V[0xF] = 0;
-                        V[x] = (char)((V[x] + V[y]) & 0xFF);
+                        V[x] = (char) ((V[x] + V[y]) & 0xFF);
                         pc += 0x2;
                         break;
                     }
@@ -195,19 +230,30 @@ public class Chip {
                     case 0x0005: { //VY is subtracted from VX. VF is set to 0 when there is a borrow else 1
                         int x = (opcode & 0x0F00) >> 8;
                         int y = (opcode & 0x00F0) >> 4;
-                        System.out.print("V[" + x + "] = " + (int)V[x] + " V[" + y + "] = " + (int)V[y] + ", ");
-                        if(V[x] > V[y]) {
+                        System.out.print("V[" + x + "] = " + (int) V[x] + " V[" + y + "] = " + (int) V[y] + ", ");
+                        if (V[x] > V[y]) {
                             V[0xF] = 1;
                             System.out.println("No Borrow");
                         } else {
                             V[0xF] = 0;
                             System.out.println("Borrow");
                         }
-                        V[x] = (char)((V[x] - V[y]) & 0xFF);
+                        V[x] = (char) ((V[x] - V[y]) & 0xFF);
                         pc += 2;
                         break;
                     }
-
+                    case 0x0006: {//8XY6 Stores the least significant bit of VX in VF and then shifts VX to the right by 1.
+                        //I don't know why they had Y in this opcode, but WikiPedia claims that the functionality
+                        //of this OpCode was unintentional, so it might have had a different implementation originally
+                        int x = (opcode & 0x0F00) >> 8;
+                        int lsb = V[x] & 0x1;
+                        V[0xF] = (char) lsb;
+                        V[x] = (char) (V[x] >> 1);
+                        System.out.println("Stored least significant bit of V[" + x +
+                                "] to V[0xF] and shifted V[" + x + "] to the right");
+                        pc += 2;
+                        break;
+                    }
                     default:
                         System.err.println("Unsupported Opcode!(0x8)");
                         System.exit(0);
@@ -223,15 +269,17 @@ public class Chip {
                 break;
 
             case 0xC000: //Set VX to random number anded with NN (CXNN)
+            {
                 int x = (opcode & 0x0F00) >> 8;
                 int nn = (opcode & 0x00FF);
                 int randomNumber = new Random().nextInt(256) & nn;
                 System.out.println("V[" + x + "] has been set to (randomised) " + randomNumber);
                 V[x] = (char) randomNumber;
                 pc += 2;
-
+                break;
+            }
             case 0xD000: { //DXYN: Draw a sprite (X, Y) size (8, N). Sprite is located at I
-                x = V[(opcode & 0x0F00) >> 8] % 64;
+                int x = V[(opcode & 0x0F00) >> 8] % 64;
                 int y = V[(opcode & 0x00F0) >> 4] % 32;
                 int height = opcode & 0x000F;
 
@@ -244,7 +292,13 @@ public class Chip {
                         if (pixel != 0) {
                             int totalX = x + _x;
                             int totalY = y + _y;
-                            int index = totalY * 64 + totalX;
+                            if (totalY > 31) {
+                                totalY = totalY - 31;
+                            }
+                            if (totalX > 63) {
+                                totalX = totalX - 63;
+                            }
+                            int index = (totalY * 64) + totalX;
 
                             if (display[index] == 1)
                                 V[0xF] = 1;
@@ -262,8 +316,8 @@ public class Chip {
             case 0xE000: {
                 switch (opcode & 0x00FF) {
                     case 0x009E: { //EX9E Skip the next instruction if the Key VX is pressed
-                        int key = (opcode & 0x0F00) >> 8;
-                        if(keys[key] == 1) {
+                        int key = V[(opcode & 0x0F00) >> 8];
+                        if (keys[key] == 1) {
                             pc += 4;
                         } else {
                             pc += 2;
@@ -272,8 +326,8 @@ public class Chip {
                     }
 
                     case 0x00A1: { //EXA1 Skip the next instruction if the Key VX is NOT pressed
-                        int key = (opcode & 0x0F00) >> 8;
-                        if(keys[key] == 0) {
+                        int key = V[(opcode & 0x0F00) >> 8];
+                        if (keys[key] == 0) {
                             pc += 4;
                         } else {
                             pc += 2;
@@ -290,31 +344,53 @@ public class Chip {
             }
 
             case 0xF000:
-
                 switch (opcode & 0x00FF) {
+                    case 0x000A: { //FX0A waits for user input and places input in VX
+                        int x = (opcode & 0x0F00) >> 8;
+                        int key = -1;
+                        byte[] state = keys.clone();
+                        while (!DisplayFrame.keyPressed){
+
+                        }
+                        setKeyBuffer(DisplayFrame.getKeyBuffer());
+                        for (int i = 0; i < keys.length; i++) {
+                            if(state[i] != keys[i]){
+                                key = keys[i];
+                                break;
+                            }
+                        }
+                        if(key != -1)
+                        V[x] = (char) key;
+                        pc += 2;
+                        keys = new byte[16];
+                        break;
+                    }
                     case 0x0018: //FX18 Sets the sound timer to VX.
                     {
-                        x = (opcode & 0x0F00) >> 8;
+                        int x = (opcode & 0x0F00) >> 8;
                         sound_timer = V[x];
                         pc += 2;
                         System.out.println("Sound timer has been set to " + sound_timer);
+                        break;
                     }
                     case 0x0007: { //FX07: Set VX to the value of delay_timer
-                        x = (opcode & 0x0F00) >> 8;
+                        int x = (opcode & 0x0F00) >> 8;
                         V[x] = (char) delay_timer;
                         pc += 2;
                         System.out.println("V[" + x + "] has been set to " + delay_timer);
+                        break;
                     }
 
                     case 0x0015: { //FX15: Set delay timer to V[x]
-                        x = (opcode & 0x0F00) >> 8;
+                        int x = (opcode & 0x0F00) >> 8;
                         delay_timer = V[x];
                         pc += 2;
                         System.out.println("Set delay_timer to V[" + x + "] = " + (int) V[x]);
+                        break;
                     }
 
                     case 0x0029: { //Sets I to the location of the sprite for the character VX (Fontset)
-                        x = (opcode & 0x0F00) >> 8;
+                        int x = (opcode & 0x0F00) >> 8;
                         int character = V[x];
                         I = (char) (0x050 + (character * 5));
                         System.out.println("Setting I to Character V[" + x + "] = " + (int) V[x] + " Offset to 0x" + Integer.toHexString(I).toUpperCase());
@@ -323,7 +399,7 @@ public class Chip {
                     }
 
                     case 0x0033: { //FX33 Store a binary-coded decimal value VX in I, I + 1 and I + 2
-                        x = (opcode & 0x0F00) >> 8;
+                        int x = (opcode & 0x0F00) >> 8;
                         int value = V[x];
                         int hundreds = (value - (value % 100)) / 100;
                         value -= hundreds * 100;
@@ -337,9 +413,9 @@ public class Chip {
                         break;
                     }
 
-                    case 0x0065: { //FX65 Filss V0 to VX with values from I
-                        x = (opcode & 0x0F00) >> 8;
-                        for (int i = 0; i < x; i++) {
+                    case 0x0065: { //FX65 Fills V0 to VX with values from I
+                        int x = (opcode & 0x0F00) >> 8;
+                        for (int i = 0; i <= x; i++) {
                             V[i] = memory[I + i];
                         }
                         System.out.println("Setting V[0] to V[" + x + "] to the values of merory[0x" + Integer.toHexString(I & 0xFFFF).toUpperCase() + "]");
@@ -347,6 +423,15 @@ public class Chip {
                         break;
                     }
 
+                    case 0x001E: //Add VX to I (FX1E)
+                        //V[x] = (char)((V[x] + V[y]) & 0xFF)
+                    {
+                        int x = (opcode & 0x0F00) >> 8;
+                        I += V[x];
+                        System.out.println("Added V[" + x + "] to I");
+                        pc += 0x2;
+                        break;
+                    }
                     default:
                         System.err.println("Unsupported Opcode!(0xF)");
                         System.exit(0);
@@ -357,6 +442,20 @@ public class Chip {
                 System.err.println("Unsupported Opcode!");
                 System.exit(0);
         }
+        if (sound_timer > 0) {
+            sound_timer--;
+            try {
+                Chip.tone(1200, 100);
+                System.out.println("Beep!");
+            } catch (LineUnavailableException e) {
+                e.printStackTrace();
+                System.exit(1);
+            }
+        } else {
+            beeped = false;
+        }
+        if (delay_timer > 0)
+            delay_timer--;
     }
 
     /**
@@ -426,6 +525,158 @@ public class Chip {
         for (int i = 0; i < keys.length; i++) {
             keys[i] = (byte) keyBuffer[i];
         }
+    }
+
+    //Sound
+    public static float SAMPLE_RATE = 8000f;
+
+    public static void tone(int hz, int msecs)
+            throws LineUnavailableException {
+        if (!beeped)
+            tone(hz, msecs, 1.0);
+    }
+
+    public static void tone(int hz, int msecs, double vol)
+            throws LineUnavailableException {
+        byte[] buf = new byte[1];
+        AudioFormat af = new AudioFormat(SAMPLE_RATE, 8, 1, true, false);
+        SourceDataLine sdl = AudioSystem.getSourceDataLine(af);
+        sdl.open(af);
+        sdl.start();
+        for (int i = 0; i < msecs * 8; i++) {
+            double angle = i / (SAMPLE_RATE / hz) * 2.0 * Math.PI;
+            buf[0] = (byte) (Math.sin(angle) * 127.0 * vol);
+            sdl.write(buf, 0, 1);
+        }
+        sdl.drain();
+        sdl.stop();
+        sdl.close();
+        beeped = true;
+    }
+
+    public void saveState(String filepath){
+        String state = new Gson().toJson(this);
+        try {
+            Files.writeString(Paths.get(filepath), state);
+        } catch (IOException e){
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
+
+    public void loadState(String filepath){
+        try {
+            Gson gson = new Gson();
+        String state = Files.readString(Paths.get(filepath));
+        Chip temp = gson.fromJson(state, Chip.class);
+        this.init();
+        this.memory = temp.getMemory();
+        this.keys = temp.getKeys();
+        this.display = temp.getDisplay();
+        this.sound_timer = temp.getSound_timer();
+        this.delay_timer = temp.getDelay_timer();
+        this.I = temp.getI();
+        this.needRedraw = temp.needsRedraw();
+        this.pc = temp.getPc();
+        this.stack = temp.getStack();
+        this.stackPointer = temp.getStackPointer();
+        this.V = temp.getV();
+        } catch (IOException e){
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
+
+    public char[] getMemory() {
+        return memory;
+    }
+
+    public void setMemory(char[] memory) {
+        this.memory = memory;
+    }
+
+    public char[] getV() {
+        return V;
+    }
+
+    public void setV(char[] v) {
+        V = v;
+    }
+
+    public char getI() {
+        return I;
+    }
+
+    public void setI(char i) {
+        I = i;
+    }
+
+    public char getPc() {
+        return pc;
+    }
+
+    public void setPc(char pc) {
+        this.pc = pc;
+    }
+
+    public char[] getStack() {
+        return stack;
+    }
+
+    public void setStack(char[] stack) {
+        this.stack = stack;
+    }
+
+    public int getStackPointer() {
+        return stackPointer;
+    }
+
+    public void setStackPointer(int stackPointer) {
+        this.stackPointer = stackPointer;
+    }
+
+    public int getDelay_timer() {
+        return delay_timer;
+    }
+
+    public void setDelay_timer(int delay_timer) {
+        this.delay_timer = delay_timer;
+    }
+
+    public int getSound_timer() {
+        return sound_timer;
+    }
+
+    public void setSound_timer(int sound_timer) {
+        this.sound_timer = sound_timer;
+    }
+
+    public byte[] getKeys() {
+        return keys;
+    }
+
+    public void setKeys(byte[] keys) {
+        this.keys = keys;
+    }
+
+    public void setDisplay(byte[] display) {
+        this.display = display;
+    }
+
+    public boolean isNeedRedraw() {
+        return needRedraw;
+    }
+
+    public void setNeedRedraw(boolean needRedraw) {
+        this.needRedraw = needRedraw;
+    }
+
+    public static boolean isBeeped() {
+        return beeped;
+    }
+
+    public static void setBeeped(boolean beeped) {
+        Chip.beeped = beeped;
     }
 
 }
