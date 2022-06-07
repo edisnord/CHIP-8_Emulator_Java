@@ -128,12 +128,12 @@ public class Chip {
                 }
                 break;
 
-            case 0x1000: //1NNN: Jumps to address NNN
+            case 0x1000: { //1NNN: Jumps to address NNN
                 int nnn = opcode & 0x0FFF;
                 System.out.println("Jumping to address " + Integer.toHexString(nnn));
                 pc = (char) nnn;
                 break;
-
+            }
             case 0x2000: //2NNN: Calls subroutine at NNN
                 stack[stackPointer] = pc;
                 stackPointer++;
@@ -167,6 +167,18 @@ public class Chip {
                 }
                 break;
             }
+            case 0x5000: { //5XY0 Skips the next instruction if VX equals VY.
+                int x = (opcode & 0x0F00) >> 8;
+                int y = (opcode & 0x00F0) >> 4;
+                if(V[x] == V[y]) {
+                    System.out.println("Skipping next instruction V[" + x + "] == V[" + y + "]");
+                    pc += 4;
+                } else {
+                    System.out.println("Skipping next instruction V[" + x + "] =/= V[" + y + "]");
+                    pc += 2;
+                }
+                break;
+            }
 
             case 0x6000: { //6XNN: Set VX to NN
                 int x = (opcode & 0x0F00) >> 8;
@@ -195,6 +207,14 @@ public class Chip {
                         V[x] = V[y];
                         pc += 0x2;
                         System.out.println("V[" + x + "] has been set to V[" + y + "]");
+                        break;
+                    }
+                    case 0x0001: { //8XY1 Sets VX to VX or VY.
+                        int x = (opcode & 0x0F00) >> 8;
+                        int y = (opcode & 0x00F0) >> 4;
+                        System.out.println("Setting V[" + x + "] = V[" + x + "] | V[" + y + "]");
+                        V[x] = (char)((V[x] | V[y]) & 0xFF);
+                        pc += 2;
                         break;
                     }
                     case 0x0002: //8XY2: Sets VX to VX and VY. (Bitwise AND operation)
@@ -252,6 +272,16 @@ public class Chip {
                         pc += 2;
                         break;
                     }
+                    case 0x000E: {//8XYE Stores the most significant bit of VX in VF and then shifts VX to the left by 1.
+                        int x = (opcode & 0x0F00) >> 8;
+                        int msb = V[x] & 0x8000;
+                        V[0xF] = (char) msb;
+                        V[x] = (char) (V[x] << 1);
+                        System.out.println("Stored most significant bit of V[" + x +
+                                "] to V[0xF] and shifted V[" + x + "] to the left");
+                        pc += 2;
+                        break;
+                    }
                     default:
                         System.err.println("Unsupported Opcode!(0x8)");
                         System.exit(0);
@@ -260,11 +290,31 @@ public class Chip {
 
                 break;
 
+            case 0x9000: { //9XY0 Skips the next instruction if VX doesn't equal VY.
+                int x = (opcode & 0x0F00) >> 8;
+                int y = (opcode & 0x00F0) >> 4;
+                if(V[x] != V[y]) {
+                    System.out.println("Skipping next instruction V[" + x + "] != V[" + y + "]");
+                    pc += 4;
+                } else {
+                    System.out.println("Skipping next instruction V[" + x + "] !/= V[" + y + "]");
+                    pc += 2;
+                }
+                break;
+            }
+
             case 0xA000: //ANNN: Set I to NNN
                 I = (char) (opcode & 0x0FFF);
                 pc += 2;
                 System.out.println("Set I to " + Integer.toHexString(I).toUpperCase());
                 break;
+
+            case 0xB000: { //BNNN Jumps to the address NNN plus V0.
+                int nnn = opcode & 0x0FFF;
+                int extra = V[0] & 0xFF;
+                pc = (char)(nnn + extra);
+                break;
+            }
 
             case 0xC000: //Set VX to random number anded with NN (CXNN)
             {
@@ -347,13 +397,11 @@ public class Chip {
                         int x = (opcode & 0x0F00) >> 8;
                         int key = -1;
                         byte[] state = keys.clone();
-                        while (!DisplayFrame.keyPressed){
-
-                        }
+                        while (!DisplayFrame.keyPressed);
                         setKeyBuffer(DisplayFrame.getKeyBuffer());
                         for (int i = 0; i < keys.length; i++) {
                             if(state[i] != keys[i]){
-                                key = keys[i];
+                                key = i;
                                 break;
                             }
                         }
@@ -410,13 +458,23 @@ public class Chip {
                         pc += 2;
                         break;
                     }
-
+                    case 0x0055: { //FX35 Stores from V0 to VX (including VX) in memory, starting at address I.
+                        int x = (opcode & 0x0F00) >> 8;
+                        for (int i = 0; i <= x; i++) {
+                            memory[I + i] = V[i];
+                        }
+                        System.out.println("Setting the values of memory from " +
+                                Integer.toHexString(I) + " to " + Integer.toHexString(I + x) + " from the registers " +
+                                "V[0] to V[" + Integer.toHexString(x) + "]");
+                        pc += 2;
+                        break;
+                    }
                     case 0x0065: { //FX65 Fills V0 to VX with values from I
                         int x = (opcode & 0x0F00) >> 8;
                         for (int i = 0; i <= x; i++) {
                             V[i] = memory[I + i];
                         }
-                        System.out.println("Setting V[0] to V[" + x + "] to the values of merory[0x" + Integer.toHexString(I & 0xFFFF).toUpperCase() + "]");
+                        System.out.println("Setting V[0] to V[" + x + "] to the values of memory[0x" + Integer.toHexString(I & 0xFFFF).toUpperCase() + "]");
                         pc += 2;
                         break;
                     }

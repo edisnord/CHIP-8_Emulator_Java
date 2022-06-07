@@ -12,7 +12,8 @@ public class Main extends Thread{
         chip8 = new Chip();
         chip8.init();
         DisplayFrame = new DisplayFrame(chip8);
-        chip8.loadProgram("C:\\Users\\Edis Hasaj\\IdeaProjects\\CHIP-8_Emulator_Java\\src\\main\\java\\Breakout (Brix hack) [David Winter, 1997].ch8");
+        chip8.loadProgram("C:\\Users\\Edis Hasaj\\Documents\\games\\Tank.ch8");
+
     }
 
     public void run(){
@@ -24,7 +25,7 @@ public class Main extends Thread{
                 chip8.removeDrawFlag();
             }
             try {
-                Thread.sleep(5);
+                Thread.sleep(16);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
