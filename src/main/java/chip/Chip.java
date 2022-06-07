@@ -11,9 +11,7 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Random;
 
@@ -586,97 +584,33 @@ public class Chip {
             System.exit(1);
         }
     }
-
     public char[] getMemory() {
         return memory;
     }
-
-    public void setMemory(char[] memory) {
-        this.memory = memory;
-    }
-
     public char[] getV() {
         return V;
     }
-
-    public void setV(char[] v) {
-        V = v;
-    }
-
     public char getI() {
         return I;
     }
-
-    public void setI(char i) {
-        I = i;
-    }
-
     public char getPc() {
         return pc;
     }
-
-    public void setPc(char pc) {
-        this.pc = pc;
-    }
-
     public char[] getStack() {
         return stack;
-    }
-
-    public void setStack(char[] stack) {
-        this.stack = stack;
     }
 
     public int getStackPointer() {
         return stackPointer;
     }
-
-    public void setStackPointer(int stackPointer) {
-        this.stackPointer = stackPointer;
-    }
-
     public int getDelay_timer() {
         return delay_timer;
     }
-
-    public void setDelay_timer(int delay_timer) {
-        this.delay_timer = delay_timer;
-    }
-
     public int getSound_timer() {
         return sound_timer;
     }
-
-    public void setSound_timer(int sound_timer) {
-        this.sound_timer = sound_timer;
-    }
-
     public byte[] getKeys() {
         return keys;
-    }
-
-    public void setKeys(byte[] keys) {
-        this.keys = keys;
-    }
-
-    public void setDisplay(byte[] display) {
-        this.display = display;
-    }
-
-    public boolean isNeedRedraw() {
-        return needRedraw;
-    }
-
-    public void setNeedRedraw(boolean needRedraw) {
-        this.needRedraw = needRedraw;
-    }
-
-    public static boolean isBeeped() {
-        return beeped;
-    }
-
-    public static void setBeeped(boolean beeped) {
-        Chip.beeped = beeped;
     }
 
 }

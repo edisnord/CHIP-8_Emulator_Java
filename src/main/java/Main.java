@@ -11,7 +11,6 @@ public class Main extends Thread{
     {
         chip8 = new Chip();
         DisplayFrame = new DisplayFrame(chip8);
-        chip8.init();
         chip8.loadProgram("C:\\Users\\Edis Hasaj\\IdeaProjects\\CHIP-8_Emulator_Java\\src\\main\\java\\Breakout (Brix hack) [David Winter, 1997].ch8");
     }
 
