@@ -1,11 +1,34 @@
 package chip;
 
-public class ChipData {
+public class Memory {
+    /**
+     * 4kB of 8-bit memory<br/>
+     * At position 0x50: The "bios" fontset
+     * At position 0x200: The start of every program
+     */
+    public char[] RAM;
 
     /**
-     * Fontset in bytes
-     * Memory position 0x50
+     * 16 8-bit registers.<br/>
+     * Register 0xF is used for Carry, Borrow and collision detection
      */
+    public char[] V;
+
+    public Memory(){
+        RAM = new char[4096];
+        V = new char[16];
+        loadFontset();
+    }
+
+    /**
+     * Loads the fontset into the memory
+     */
+    public void loadFontset() {
+        for (int i = 0; i < fontset.length; i++) {
+            RAM[0x50 + i] = (char) (fontset[i] & 0xFF);
+        }
+    }
+
     public static int[] fontset =
             {
                     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0

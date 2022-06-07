@@ -14,22 +14,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Random;
+import java.util.Stack;
 
 public class Chip {
 
-    /**
-     * 4kB of 8-bit memory<br/>
-     * At position 0x50: The "bios" fontset
-     * At position 0x200: The start of every program
-     */
-    private char[] memory;
+    private Memory memory;
 
-    /**
-     * 16 8-bit registers.<br/>
-     * They will be used to store data which is used in several operation<br/>
-     * Register 0xF is used for Carry, Borrow and collision detection
-     */
-    private char[] V;
     /**
      * 16-bit (only 12 are used) to point to a specific point in the memory
      */
@@ -43,11 +33,7 @@ public class Chip {
      * Subroutine callstack<br/>
      * Allows up to 16 levels of nesting
      */
-    private char stack[];
-    /**
-     * Points to the next free slot int the stack
-     */
-    private int stackPointer;
+    private Stack<Character> stack;
 
     /**
      * This timer is used to delay events in programs/games
@@ -67,20 +53,19 @@ public class Chip {
      */
     private byte[] display;
 
-    private boolean needRedraw;
+    private boolean drawFlag;
     private static boolean beeped;
 
     /**
      * Reset the Chip 8 memory and pointers
      */
     public void init() {
-        memory = new char[4096];
-        V = new char[16];
+
+        memory = new Memory();
+        stack = new Stack<>();
+
         I = 0x0;
         pc = 0x200;
-
-        stack = new char[16];
-        stackPointer = 0;
 
         beeped = false;
 
@@ -91,8 +76,8 @@ public class Chip {
 
         display = new byte[64 * 32];
 
-        needRedraw = false;
-        loadFontset();
+        drawFlag = false;
+
     }
 
     /**
@@ -100,21 +85,20 @@ public class Chip {
      */
     public void run() {
         //fetch Opcode
-        char opcode = (char) ((memory[pc] << 8) | memory[pc + 1]);
+        char opcode = (char) ((memory.RAM[pc] << 8) | memory.RAM[pc + 1]);
         System.out.print(Integer.toHexString(opcode).toUpperCase() + ": ");
         //decode opcode
         switch (opcode & 0xF000) {
 
             case 0x0000: //Multi-case
-                switch (opcode & 0x00FF) {
+                switch (extractKK(opcode)) {
                     case 0x00E0: //00E0: Clear Screen
                         display = new byte[32 * 64];
-                        pc += 0x2;
+                        nextInstruction();
                         break;
 
                     case 0x00EE: //00EE: Returns from subroutine
-                        stackPointer--;
-                        pc = (char) (stack[stackPointer] + 2);
+                        pc = (char) (stack.pop() + 2);
                         System.out.println("Returning to " + Integer.toHexString(pc).toUpperCase());
                         break;
 
@@ -129,157 +113,138 @@ public class Chip {
                 break;
 
             case 0x1000: { //1NNN: Jumps to address NNN
-                int nnn = opcode & 0x0FFF;
-                System.out.println("Jumping to address " + Integer.toHexString(nnn));
-                pc = (char) nnn;
+                System.out.println("Jumping to address " + Integer.toHexString(extractNNN(opcode)));
+                pc = (char) extractNNN(opcode);
                 break;
             }
             case 0x2000: //2NNN: Calls subroutine at NNN
-                stack[stackPointer] = pc;
-                stackPointer++;
+                stack.push(pc);
                 pc = (char) (opcode & 0x0FFF);
-                System.out.println("Calling " + Integer.toHexString(pc).toUpperCase() + " from " + Integer.toHexString(stack[stackPointer - 1]).toUpperCase());
+                System.out.println("Calling " + Integer.toHexString(pc).toUpperCase() + " from " + Integer.toHexString(stack.peek()).toUpperCase());
                 break;
 
             case 0x3000: { //3XNN: Skips the next instruction if VX equals NN
-                int x = (opcode & 0x0F00) >> 8;
                 int nn = (opcode & 0x00FF);
-                if (V[x] == nn) {
-                    pc += 4;
-                    System.out.println("Skipping next instruction (V[" + x + "] == " + nn + ")");
+                if (memory.V[extractX(opcode)] == extractKK(opcode)) {
+                    nextInstruction();
+                    nextInstruction();
+                    System.out.println("Skipping next instruction (V[" + extractX(opcode) + "] == " + extractKK(opcode) + ")");
                 } else {
-                    pc += 2;
-                    System.out.println("Not skipping next instruction (V[" + x + "] != " + nn + ")");
+                    nextInstruction();
+                    System.out.println("Not skipping next instruction (V[" + extractX(opcode) + "] != " + nn + ")");
                 }
                 break;
             }
 
             case 0x4000://4XNN: Skips the next instruction if VX does not equal NN
             {
-                int x = (opcode & 0x0F00) >> 8;
-                int nn = (opcode & 0x00FF);
-                if (V[x] != nn) {
+                if (memory.V[extractX(opcode)] != extractKK(opcode)) {
                     pc += 4;
-                    System.out.println("Skipping next instruction (V[" + x + "] == " + nn + ")");
+                    System.out.println("Skipping next instruction (V[" + extractX(opcode) + "] == " + extractKK(opcode) + ")");
                 } else {
-                    pc += 2;
-                    System.out.println("Not skipping next instruction (V[" + x + "] != " + nn + ")");
+                    nextInstruction();
+                    System.out.println("Not skipping next instruction (V[" + extractX(opcode) + "] != " + extractKK(opcode) + ")");
                 }
                 break;
             }
             case 0x5000: { //5XY0 Skips the next instruction if VX equals VY.
-                int x = (opcode & 0x0F00) >> 8;
-                int y = (opcode & 0x00F0) >> 4;
-                if(V[x] == V[y]) {
-                    System.out.println("Skipping next instruction V[" + x + "] == V[" + y + "]");
+                if(memory.V[extractX(opcode)] == memory.V[extractY(opcode)]) {
+                    System.out.println("Skipping next instruction V[" + extractX(opcode) + "] == V[" + extractY(opcode) + "]");
                     pc += 4;
                 } else {
-                    System.out.println("Skipping next instruction V[" + x + "] =/= V[" + y + "]");
-                    pc += 2;
+                    System.out.println("Skipping next instruction V[" + extractX(opcode) + "] =/= V[" + extractY(opcode) + "]");
+                    nextInstruction();
                 }
                 break;
             }
 
             case 0x6000: { //6XNN: Set VX to NN
-                int x = (opcode & 0x0F00) >> 8;
-                V[x] = (char) (opcode & 0x00FF);
-                pc += 2;
-                System.out.println("Setting V[" + x + "] to " + (int) V[x]);
+                memory.V[extractX(opcode)] = (char) (opcode & 0x00FF);
+                nextInstruction();
+                System.out.println("Setting V[" + extractX(opcode) + "] to " + (int) memory.V[extractX(opcode)]);
                 break;
             }
 
             case 0x7000: { //7XNN: Adds NN to VX
-                int x = (opcode & 0x0F00) >> 8;
-                int nn = (opcode & 0x00FF);
-                V[x] = (char) ((V[x] + nn) & 0xFF);
-                pc += 2;
-                System.out.println("Adding " + nn + " to V[" + x + "] = " + (int) V[x]);
+                memory.V[extractX(opcode)] = (char) ((memory.V[extractX(opcode)] + extractKK(opcode)) & 0xFF);
+                nextInstruction();
+                System.out.println("Adding " + extractKK(opcode) + " to V[" 
+                        + extractX(opcode) + "] = " + (int) memory.V[extractX(opcode)]);
                 break;
             }
 
-            case 0x8000: //Contains more data in last nibble
+            case 0x8000: //Multi-case
 
-                switch (opcode & 0x000F) {
+                switch (extractN(opcode)) {
                     case 0x0000: //8XY0: Sets VX to the value of VY.
                     {
-                        int x = (opcode & 0x0F00) >> 8;
-                        int y = (opcode & 0x00F0) >> 4;
-                        V[x] = V[y];
-                        pc += 0x2;
-                        System.out.println("V[" + x + "] has been set to V[" + y + "]");
+                        memory.V[extractX(opcode)] = memory.V[extractY(opcode)];
+                        nextInstruction();
+                        System.out.println("V[" + extractX(opcode) + "] has been set to V[" + extractY(opcode) + "]");
                         break;
                     }
                     case 0x0001: { //8XY1 Sets VX to VX or VY.
-                        int x = (opcode & 0x0F00) >> 8;
-                        int y = (opcode & 0x00F0) >> 4;
-                        System.out.println("Setting V[" + x + "] = V[" + x + "] | V[" + y + "]");
-                        V[x] = (char)((V[x] | V[y]) & 0xFF);
-                        pc += 2;
+                        System.out.println("Setting V[" + extractX(opcode) + "] = V[" + extractX(opcode) + "] | V[" + extractY(opcode) + "]");
+                        memory.V[extractX(opcode)] = (char)((memory.V[extractX(opcode)] | memory.V[extractY(opcode)]) & 0xFF);
+                        nextInstruction();
                         break;
                     }
                     case 0x0002: //8XY2: Sets VX to VX and VY. (Bitwise AND operation)
                     {
-                        int vx = V[(opcode & 0x0F00) >> 8];
-                        int vy = V[(opcode & 0x00F0) >> 4];
-                        V[(opcode & 0x0F00) >> 8] = (char) (vx & vy);
-                        System.out.println("Set V[" + ((opcode & 0x0F00) >> 8) + "] to V[" + ((opcode & 0x0F00) >> 8) + "] & V[" + ((opcode & 0x00F0) >> 4) + "]");
-                        pc += 2;
+                        int vx = memory.V[extractX(opcode)];
+                        int vy = memory.V[extractY(opcode)];
+                        memory.V[(opcode & 0x0F00) >> 8] = (char) (vx & vy);
+                        System.out.println("Set V[" + extractX(opcode) + "] to V[" + extractX(opcode) + "] & V[" + extractY(opcode) + "]");
+                        nextInstruction();
                         break;
                     }
                     case 0x0003: {//8XY3 Sets VX to VX xor VY.
-                        int x = (opcode & 0x0F00) >> 8;
-                        int y = (opcode & 0x00F0) >> 4;
-                        System.out.println("XOR-ing V[" + x + "] and V[" + y + "] and storing result to V[" + x + "]");
-                        V[x] = (char) ((V[x] ^ V[y]) & 0xFF);
-                        pc += 2;
+                        System.out.println("XOR-ing V[" + extractX(opcode) + "] and V[" + extractY(opcode) + "] and storing result to V[" + extractX(opcode) + "]");
+                        memory.V[extractX(opcode)] = (char) ((memory.V[extractX(opcode)] ^ memory.V[extractY(opcode)]) & 0xFF);
+                        nextInstruction();
                         break;
                     }
                     case 0x0004: {
-                        int x = (opcode & 0x0F00) >> 8;
-                        int y = (opcode & 0x00F0) >> 4;
-                        System.out.println("Adding V[" + x + "] and V[" + y + "], apply carry if needed");
-                        if (V[y] > 255 - V[x]) V[0xF] = 1;
-                        else V[0xF] = 0;
-                        V[x] = (char) ((V[x] + V[y]) & 0xFF);
-                        pc += 0x2;
+                        System.out.println("Adding V[" + extractX(opcode) + "] and V[" + extractY(opcode) + "], apply carry if needed");
+                        if (memory.V[extractY(opcode)] > 255 - memory.V[extractX(opcode)]) memory.V[0xF] = 1;
+                        else memory.V[0xF] = 0;
+                        memory.V[extractX(opcode)] = (char) ((memory.V[extractX(opcode)] + memory.V[extractY(opcode)]) & 0xFF);
+                        nextInstruction();
                         break;
                     }
 
                     case 0x0005: { //VY is subtracted from VX. VF is set to 0 when there is a borrow else 1
-                        int x = (opcode & 0x0F00) >> 8;
-                        int y = (opcode & 0x00F0) >> 4;
-                        System.out.print("V[" + x + "] = " + (int) V[x] + " V[" + y + "] = " + (int) V[y] + ", ");
-                        if (V[x] > V[y]) {
-                            V[0xF] = 1;
+                        System.out.print("V[" + extractX(opcode) + "] = " + (int) memory.V[extractX(opcode)] + " V["
+                                + extractY(opcode) + "] = " + (int) memory.V[extractY(opcode)] + ", ");
+                        if (memory.V[extractX(opcode)] > memory.V[extractY(opcode)]) {
+                            memory.V[0xF] = 1;
                             System.out.println("No Borrow");
                         } else {
-                            V[0xF] = 0;
+                            memory.V[0xF] = 0;
                             System.out.println("Borrow");
                         }
-                        V[x] = (char) ((V[x] - V[y]) & 0xFF);
-                        pc += 2;
+                        memory.V[extractX(opcode)] = (char) ((memory.V[extractX(opcode)] - memory.V[extractY(opcode)]) & 0xFF);
+                        nextInstruction();
                         break;
                     }
                     case 0x0006: {//8XY6 Stores the least significant bit of VX in VF and then shifts VX to the right by 1.
                         //I don't know why they had Y in this opcode, but WikiPedia claims that the functionality
                         //of this OpCode was unintentional, so it might have had a different implementation originally
-                        int x = (opcode & 0x0F00) >> 8;
-                        int lsb = V[x] & 0x1;
-                        V[0xF] = (char) lsb;
-                        V[x] = (char) (V[x] >> 1);
-                        System.out.println("Stored least significant bit of V[" + x +
-                                "] to V[0xF] and shifted V[" + x + "] to the right");
-                        pc += 2;
+                        int lsb = memory.V[extractX(opcode)] & 0x1;
+                        memory.V[0xF] = (char) lsb;
+                        memory.V[extractX(opcode)] = (char) (memory.V[extractX(opcode)] >> 1);
+                        System.out.println("Stored least significant bit of V[" + extractX(opcode) +
+                                "] to V[0xF] and shifted V[" + extractX(opcode) + "] to the right");
+                        nextInstruction();
                         break;
                     }
                     case 0x000E: {//8XYE Stores the most significant bit of VX in VF and then shifts VX to the left by 1.
-                        int x = (opcode & 0x0F00) >> 8;
-                        int msb = V[x] & 0x8000;
-                        V[0xF] = (char) msb;
-                        V[x] = (char) (V[x] << 1);
-                        System.out.println("Stored most significant bit of V[" + x +
-                                "] to V[0xF] and shifted V[" + x + "] to the left");
-                        pc += 2;
+                        int msb = memory.V[extractX(opcode)] & 0x8000;
+                        memory.V[0xF] = (char) msb;
+                        memory.V[extractX(opcode)] = (char) (memory.V[extractX(opcode)] << 1);
+                        System.out.println("Stored most significant bit of V[" + extractX(opcode) +
+                                "] to V[0xF] and shifted V[" + extractX(opcode) + "] to the left");
+                        nextInstruction();
                         break;
                     }
                     default:
@@ -291,55 +256,50 @@ public class Chip {
                 break;
 
             case 0x9000: { //9XY0 Skips the next instruction if VX doesn't equal VY.
-                int x = (opcode & 0x0F00) >> 8;
-                int y = (opcode & 0x00F0) >> 4;
-                if(V[x] != V[y]) {
-                    System.out.println("Skipping next instruction V[" + x + "] != V[" + y + "]");
+                if(memory.V[extractX(opcode)] != memory.V[extractY(opcode)]) {
+                    System.out.println("Skipping next instruction V[" + extractX(opcode) + "] != V[" + extractY(opcode) + "]");
                     pc += 4;
                 } else {
-                    System.out.println("Skipping next instruction V[" + x + "] !/= V[" + y + "]");
-                    pc += 2;
+                    System.out.println("Skipping next instruction V[" + extractX(opcode) + "] !/= V[" + extractY(opcode) + "]");
+                    nextInstruction();
                 }
                 break;
             }
 
             case 0xA000: //ANNN: Set I to NNN
-                I = (char) (opcode & 0x0FFF);
-                pc += 2;
+                I = extractNNN(opcode);
+                nextInstruction();
                 System.out.println("Set I to " + Integer.toHexString(I).toUpperCase());
                 break;
 
-            case 0xB000: { //BNNN Jumps to the address NNN plus V0.
-                int nnn = opcode & 0x0FFF;
-                int extra = V[0] & 0xFF;
-                pc = (char)(nnn + extra);
+            case 0xB000: { //BNNN: Jumps to the address NNN plus V0.
+                pc = (char)(extractNNN(opcode) + extractKK(memory.V[0]));
                 break;
             }
 
             case 0xC000: //Set VX to random number anded with NN (CXNN)
             {
-                int x = (opcode & 0x0F00) >> 8;
-                int nn = (opcode & 0x00FF);
-                int randomNumber = new Random().nextInt(256) & nn;
-                System.out.println("V[" + x + "] has been set to (randomised) " + randomNumber);
-                V[x] = (char) randomNumber;
-                pc += 2;
+                extractX(opcode);
+                int randomNumber = new Random().nextInt(256) & extractKK(opcode);
+                System.out.println("V[" + extractX(opcode) + "] has been set to (randomised) " + randomNumber);
+                memory.V[extractX(opcode)] = (char) randomNumber;
+                nextInstruction();
                 break;
             }
             case 0xD000: { //DXYN: Draw a sprite (X, Y) size (8, N). Sprite is located at I
-                int x = V[(opcode & 0x0F00) >> 8] % 64;
-                int y = V[(opcode & 0x00F0) >> 4] % 32;
+                int x = memory.V[extractX(opcode)] % 64;
+                int y = memory.V[extractY(opcode)] % 32;
                 int height = opcode & 0x000F;
 
-                V[0xF] = 0;
+                memory.V[0xF] = 0;
 
-                for (int _y = 0; _y < height; _y++) {
-                    int line = memory[I + _y];
-                    for (int _x = 0; _x < 8; _x++) {
-                        int pixel = line & (0x80 >> _x);
+                for (int i = 0; i < height; i++) {
+                    int line = memory.RAM[I + i];
+                    for (int j = 0; j < 8; j++) {
+                        int pixel = line & (0x80 >> j);
                         if (pixel != 0) {
-                            int totalX = x + _x;
-                            int totalY = y + _y;
+                            int totalX = x + j;
+                            int totalY = y + i;
                             if (totalY > 31) {
                                 totalY = totalY - 31;
                             }
@@ -349,42 +309,45 @@ public class Chip {
                             int index = (totalY * 64) + totalX;
 
                             if (display[index] == 1)
-                                V[0xF] = 1;
+                                memory.V[0xF] = 1;
 
                             display[index] ^= 1;
                         }
                     }
                 }
-                pc += 2;
-                needRedraw = true;
-                System.out.println("Drawing at V[" + ((opcode & 0x0F00) >> 8) + "] = " + x + ", V[" + ((opcode & 0x00F0) >> 4) + "] = " + y);
+                nextInstruction();
+                drawFlag = true;
+                System.out.println("Drawing at V[" + extractX(opcode) + "] = " + x + ", V[" + extractY(opcode) + "] = " + y);
                 break;
             }
 
             case 0xE000: {
-                switch (opcode & 0x00FF) {
+                switch (extractKK(opcode)) {
                     case 0x009E: { //EX9E Skip the next instruction if the Key VX is pressed
-                        int key = V[(opcode & 0x0F00) >> 8];
+                        int key = memory.V[extractX(opcode)];
                         if (keys[key] == 1) {
-                            pc += 4;
+                            nextInstruction();
+                            nextInstruction();
+                            System.out.println("Skipped instruction, V[" + extractX(opcode) + "] was pressed");
                         } else {
-                            pc += 2;
+                            nextInstruction();
                         }
                         break;
                     }
 
                     case 0x00A1: { //EXA1 Skip the next instruction if the Key VX is NOT pressed
-                        int key = V[(opcode & 0x0F00) >> 8];
+                        int key = memory.V[extractX(opcode)];
                         if (keys[key] == 0) {
-                            pc += 4;
+                            nextInstruction();
+                            nextInstruction();
                         } else {
-                            pc += 2;
+                            nextInstruction();
                         }
                         break;
                     }
 
                     default:
-                        System.err.println("Unexisting opcode");
+                        System.err.println("Unexisting opcode 0xE");
                         System.exit(0);
                         return;
                 }
@@ -392,9 +355,8 @@ public class Chip {
             }
 
             case 0xF000:
-                switch (opcode & 0x00FF) {
-                    case 0x000A: { //FX0A waits for user input and places input in VX
-                        int x = (opcode & 0x0F00) >> 8;
+                switch (extractKK(opcode)) {
+                    case 0xA: { //FX0A waits for user input and places input in VX
                         int key = -1;
                         byte[] state = keys.clone();
                         while (!DisplayFrame.keyPressed);
@@ -406,85 +368,77 @@ public class Chip {
                             }
                         }
                         if(key != -1)
-                        V[x] = (char) key;
-                        pc += 2;
+                        memory.V[extractX(opcode)] = (char) key;
+                        nextInstruction();
                         keys = new byte[16];
                         break;
                     }
-                    case 0x0018: //FX18 Sets the sound timer to VX.
+                    case 0x18: //FX18 Sets the sound timer to VX.
                     {
-                        int x = (opcode & 0x0F00) >> 8;
-                        sound_timer = V[x];
-                        pc += 2;
+                        sound_timer = memory.V[extractX(opcode)];
+                        nextInstruction();
                         System.out.println("Sound timer has been set to " + sound_timer);
                         break;
                     }
-                    case 0x0007: { //FX07: Set VX to the value of delay_timer
-                        int x = (opcode & 0x0F00) >> 8;
-                        V[x] = (char) delay_timer;
-                        pc += 2;
-                        System.out.println("V[" + x + "] has been set to " + delay_timer);
+                    case 0x7: { //FX07: Set VX to the value of delay_timer
+                        memory.V[extractX(opcode)] = (char) delay_timer;
+                        nextInstruction();
+                        System.out.println("V[" + extractX(opcode) + "] has been set to " + delay_timer);
                         break;
                     }
 
-                    case 0x0015: { //FX15: Set delay timer to V[x]
-                        int x = (opcode & 0x0F00) >> 8;
-                        delay_timer = V[x];
-                        pc += 2;
-                        System.out.println("Set delay_timer to V[" + x + "] = " + (int) V[x]);
+                    case 0x15: { //FX15: Set delay timer to V[x]
+                        delay_timer = memory.V[extractX(opcode)];
+                        nextInstruction();
+                        System.out.println("Set delay_timer to V[" + extractX(opcode) + "] = " + (int) memory.V[extractX(opcode)]);
                         break;
                     }
 
-                    case 0x0029: { //Sets I to the location of the sprite for the character VX (Fontset)
-                        int x = (opcode & 0x0F00) >> 8;
-                        int character = V[x];
+                    case 0x29: { //Sets I to the location of the sprite for the character VX (Fontset)
+                        int character = memory.V[extractX(opcode)];
                         I = (char) (0x050 + (character * 5));
-                        System.out.println("Setting I to Character V[" + x + "] = " + (int) V[x] + " Offset to 0x" + Integer.toHexString(I).toUpperCase());
-                        pc += 2;
+                        System.out.println("Setting I to Character V[" + extractX(opcode) + "] = " + (int) memory.V[extractX(opcode)] +
+                                " Offset to 0x" + Integer.toHexString(I).toUpperCase());
+                        nextInstruction();
                         break;
                     }
 
-                    case 0x0033: { //FX33 Store a binary-coded decimal value VX in I, I + 1 and I + 2
-                        int x = (opcode & 0x0F00) >> 8;
-                        int value = V[x];
+                    case 0x33: { //FX33 Store a binary-coded decimal value VX in I, I + 1 and I + 2
+                        int value = memory.V[extractX(opcode)];
                         int hundreds = (value - (value % 100)) / 100;
                         value -= hundreds * 100;
                         int tens = (value - (value % 10)) / 10;
                         value -= tens * 10;
-                        memory[I] = (char) hundreds;
-                        memory[I + 1] = (char) tens;
-                        memory[I + 2] = (char) value;
-                        System.out.println("Storing Binary-Coded Decimal V[" + x + "] = " + (int) (V[(opcode & 0x0F00) >> 8]) + " as { " + hundreds + ", " + tens + ", " + value + "}");
-                        pc += 2;
+                        memory.RAM[I] = (char) hundreds;
+                        memory.RAM[I + 1] = (char) tens;
+                        memory.RAM[I + 2] = (char) value;
+                        System.out.println("Storing Binary-Coded Decimal V[" + extractX(opcode) + "] = " + (int) (memory.V[(opcode & 0x0F00) >> 8]) + " as { " + hundreds + ", " + tens + ", " + value + "}");
+                        nextInstruction();
                         break;
                     }
-                    case 0x0055: { //FX35 Stores from V0 to VX (including VX) in memory, starting at address I.
-                        int x = (opcode & 0x0F00) >> 8;
-                        for (int i = 0; i <= x; i++) {
-                            memory[I + i] = V[i];
+                    case 0x55: { //FX35 Stores from V0 to VX (including VX) in memory, starting at address I.
+                        for (int i = 0; i <= extractX(opcode); i++) {
+                            memory.RAM[I + i] = memory.V[i];
                         }
                         System.out.println("Setting the values of memory from " +
-                                Integer.toHexString(I) + " to " + Integer.toHexString(I + x) + " from the registers " +
-                                "V[0] to V[" + Integer.toHexString(x) + "]");
-                        pc += 2;
+                                Integer.toHexString(I) + " to " + Integer.toHexString(I + extractX(opcode)) + " from the registers " +
+                                "V[0] to V[" + Integer.toHexString(extractX(opcode)) + "]");
+                        nextInstruction();
                         break;
                     }
-                    case 0x0065: { //FX65 Fills V0 to VX with values from I
-                        int x = (opcode & 0x0F00) >> 8;
-                        for (int i = 0; i <= x; i++) {
-                            V[i] = memory[I + i];
+                    case 0x65: { //FX65 Fills V0 to VX with values from I
+                        for (int i = 0; i <= extractX(opcode); i++) {
+                            memory.V[i] = memory.RAM[I + i];
                         }
-                        System.out.println("Setting V[0] to V[" + x + "] to the values of memory[0x" + Integer.toHexString(I & 0xFFFF).toUpperCase() + "]");
-                        pc += 2;
+                        System.out.println("Setting V[0] to V[" + extractX(opcode) + "] to the values of memory[0x" + Integer.toHexString(I & 0xFFFF).toUpperCase() + "]");
+                        nextInstruction();
                         break;
                     }
 
-                    case 0x001E: //Add VX to I (FX1E)
-                        //V[x] = (char)((V[x] + V[y]) & 0xFF)
+                    case 0x1E: //Add VX to I (FX1E)
                     {
-                        int x = (opcode & 0x0F00) >> 8;
-                        I += V[x];
-                        System.out.println("Added V[" + x + "] to I");
+                        I += memory.V[extractX(opcode)];
+                        System.out.println("Added V[" + extractX(opcode) + "] to I");
                         pc += 0x2;
                         break;
                     }
@@ -529,14 +483,14 @@ public class Chip {
      * @return If a redraw is needed
      */
     public boolean needsRedraw() {
-        return needRedraw;
+        return drawFlag;
     }
 
     /**
      * Notify the chip that is has been redrawn
      */
     public void removeDrawFlag() {
-        needRedraw = false;
+        drawFlag = false;
     }
 
     /**
@@ -551,7 +505,7 @@ public class Chip {
 
             int offset = 0;
             while (input.available() > 0) {
-                memory[0x200 + offset] = (char) (input.readByte() & 0xFF);
+                memory.RAM[0x200 + offset] = (char) (input.readByte() & 0xFF);
                 offset++;
             }
 
@@ -568,14 +522,7 @@ public class Chip {
         }
     }
 
-    /**
-     * Loads the fontset into the memory
-     */
-    public void loadFontset() {
-        for (int i = 0; i < ChipData.fontset.length; i++) {
-            memory[0x50 + i] = (char) (ChipData.fontset[i] & 0xFF);
-        }
-    }
+
 
     public void setKeyBuffer(int[] keyBuffer) {
         for (int i = 0; i < keys.length; i++) {
@@ -632,21 +579,46 @@ public class Chip {
         this.sound_timer = temp.getSound_timer();
         this.delay_timer = temp.getDelay_timer();
         this.I = temp.getI();
-        this.needRedraw = temp.needsRedraw();
+        this.drawFlag = temp.needsRedraw();
         this.pc = temp.getPc();
         this.stack = temp.getStack();
-        this.stackPointer = temp.getStackPointer();
-        this.V = temp.getV();
         } catch (IOException e){
             e.printStackTrace();
             System.exit(1);
         }
     }
-    public char[] getMemory() {
-        return memory;
+
+    //nnn are the 12 lowest bits (oNNN)
+    private char extractNNN(char instruction){
+        return (char)(instruction & 0xFFF);
     }
-    public char[] getV() {
-        return V;
+
+    //kk are the 8 lowest bits (ookk)
+    private char extractKK(char instruction){
+        return (char)(instruction & 0xFF);
+    }
+
+    //x are the oXoo
+    private char extractX(char instruction){
+        return (char) ( (instruction & 0x0F00) >>> 8);
+    }
+
+    //y are the ooYo
+    private char extractY(char instruction){
+        return (char) ( (instruction & 0x00F0) >>> 4);
+    }
+
+    //n are the oooN
+    private char extractN(char instruction){
+        return (char) (instruction & 0x00F);
+    }
+    
+    private void nextInstruction(){
+        pc += 0x2;
+    }
+
+    public Memory getMemory() {
+        return memory;
     }
     public char getI() {
         return I;
@@ -654,12 +626,8 @@ public class Chip {
     public char getPc() {
         return pc;
     }
-    public char[] getStack() {
+    public Stack<Character> getStack() {
         return stack;
-    }
-
-    public int getStackPointer() {
-        return stackPointer;
     }
     public int getDelay_timer() {
         return delay_timer;
