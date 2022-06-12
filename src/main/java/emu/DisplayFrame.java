@@ -4,26 +4,37 @@ import chip.Chip;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.io.File;
 
-public class DisplayFrame extends JFrame implements KeyListener {
+public class DisplayFrame extends JFrame implements KeyListener, ActionListener {
     public static volatile boolean keyPressed;
     private static final long serialVersionUID = 1L;
     private DisplayPanel panel;
     private static int[] keyBuffer = new int[16];
     private int[] keyIdToKey;
 
-    public DisplayFrame(Chip c) {
+    private Chip chip;
+
+    private JMenuBar topMenu;
+
+    private JMenu file, options;
+    private JMenuItem openRom, saveState, loadState, changeControls, changeColors, changeClockSpeed;
+    public DisplayFrame(Chip chip) {
+        this.chip = chip;
         setPreferredSize(new Dimension(640, 320));
         pack();
         setPreferredSize(new Dimension(640 + getInsets().left + getInsets().right, 320 + getInsets().top + getInsets().bottom));
-        panel = new DisplayPanel(c);
+        panel = new DisplayPanel(chip);
         setLayout(new BorderLayout());
         add(panel, BorderLayout.CENTER);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setTitle("Chip 8 Emulator");
         pack();
+        addTopMenuBar();
         setVisible(true);
         addKeyListener(this);
 
@@ -81,4 +92,80 @@ public class DisplayFrame extends JFrame implements KeyListener {
         return keyBuffer;
     }
 
+    private void addTopMenuBar() {
+        topMenu = new JMenuBar();
+
+        file=new JMenu("File");
+        openRom = new JMenuItem("Open ROM");
+        saveState = new JMenuItem("Save State");
+        loadState = new JMenuItem("Load State");
+
+        file.add(openRom);
+        file.add(saveState);
+        file.add(loadState);
+
+        file.addActionListener(this); //lesht, s'punon
+        openRom.addActionListener(this);
+        saveState.addActionListener(this);
+        loadState.addActionListener(this);
+
+        options = new JMenu("Options");
+        changeControls = new JMenuItem("Change Controls");
+        changeColors = new JMenuItem("Change Colors");
+        changeClockSpeed = new JMenuItem("Change Clock Speed");
+
+        options.add(changeControls);
+        options.add(changeColors);
+        options.add(changeClockSpeed);
+
+        topMenu.add(file);
+        topMenu.add(options);
+        setJMenuBar(topMenu);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent actionEvent) {
+        //SPAGHET
+        if(actionEvent.getSource() == openRom){
+            JFileChooser fileChooser = new JFileChooser();
+            int option = fileChooser.showOpenDialog(this);
+
+            if(option == JFileChooser.APPROVE_OPTION){
+                File f = fileChooser.getSelectedFile();
+                String filepath=f.getPath();
+                try{
+                    chip.loadProgram(filepath);
+                    drawUpdates();
+                }catch (Exception ex) {ex.printStackTrace();  }
+
+            }
+        } else if (actionEvent.getSource() == saveState){
+            JFileChooser fileChooser = new JFileChooser();
+            int option = fileChooser.showOpenDialog(this);
+
+            if (option == JFileChooser.APPROVE_OPTION){
+                try{
+                    chip.saveState(fileChooser.getSelectedFile().getPath());
+                } catch (Exception ex){
+                    ex.printStackTrace();
+                }
+
+            }
+        } else if (actionEvent.getSource() == loadState){
+            JFileChooser fileChooser = new JFileChooser();
+            int option = fileChooser.showOpenDialog(this);
+
+            if (option == JFileChooser.APPROVE_OPTION){
+                try{
+                    chip.loadState(fileChooser.getSelectedFile().getPath());
+                } catch (Exception ex){
+                    ex.printStackTrace();
+                }
+
+            }
+        }
+
+
+
+    }
 }

@@ -12,7 +12,7 @@ public class Main extends Thread{
         chip8 = new Chip();
         chip8.init();
         DisplayFrame = new DisplayFrame(chip8);
-        chip8.loadProgram("ROMS/Pong 2 (Pong hack) [David Winter, 1997].ch8");
+        chip8.loadProgram("ROMS/IBM Logo.ch8");
 
     }
 

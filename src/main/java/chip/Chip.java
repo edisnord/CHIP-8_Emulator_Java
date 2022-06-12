@@ -499,6 +499,7 @@ public class Chip {
      * @param file The location of the program
      */
     public void loadProgram(String file) {
+        init();
         DataInputStream input = null;
         try {
             input = new DataInputStream(new FileInputStream(new File(file)));
