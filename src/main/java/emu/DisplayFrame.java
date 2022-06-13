@@ -8,9 +8,6 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
-import java.io.File;
-import java.util.Arrays;
-import java.util.List;
 
 public class DisplayFrame extends JFrame implements KeyListener, ActionListener {
     public static volatile boolean keyPressed;
@@ -21,12 +18,12 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
 
     private Chip chip;
 
-    private JMenuBar topMenu;
+    private TopMenu topMenu;
 
-    private JMenu file, options;
-    private JMenuItem openRom, saveState, loadState, changeControls, changeColors, changeClockSpeed;
+
     public DisplayFrame(Chip chip) {
         this.chip = chip;
+        topMenu = new TopMenu(this, this.chip);
         setPreferredSize(new Dimension(640, 320));
         pack();
         setPreferredSize(new Dimension(640 + getInsets().left + getInsets().right, 320 + getInsets().top + getInsets().bottom));
@@ -36,7 +33,7 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setTitle("Chip 8 Emulator");
         pack();
-        addTopMenuBar();
+        topMenu.addTopMenuBar();
         setVisible(true);
         addKeyListener(this);
 
@@ -48,6 +45,7 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
         for (int i = 0; i < keyIdToKey.length; i++) {
             keyIdToKey[i] = -1;
         }
+
         keyIdToKey['1'] = 1;
         keyIdToKey['2'] = 2;
         keyIdToKey['3'] = 3;
@@ -94,66 +92,9 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
         return keyBuffer;
     }
 
-    private void addTopMenuBar() {
-        topMenu = new JMenuBar();
-
-        file=new JMenu("File");
-        openRom = new JMenuItem("Open ROM");
-        saveState = new JMenuItem("Save State");
-        loadState = new JMenuItem("Load State");
-
-        file.add(openRom);
-        file.add(saveState);
-        file.add(loadState);
-
-        file.addActionListener(this); //lesht, s'punon
-        openRom.addActionListener(this);
-        saveState.addActionListener(this);
-        loadState.addActionListener(this);
-
-        options = new JMenu("Options");
-        changeControls = new JMenuItem("Change Controls");
-        changeColors = new JMenuItem("Change Colors");
-        changeClockSpeed = new JMenuItem("Change Clock Speed");
-
-        options.add(changeControls);
-        options.add(changeColors);
-        options.add(changeClockSpeed);
-
-        changeControls.addActionListener(this);
-
-        topMenu.add(file);
-        topMenu.add(options);
-        setJMenuBar(topMenu);
-    }
 
     @Override
     public void actionPerformed(ActionEvent actionEvent) {
-        List<Component> children = Arrays.asList(file.getMenuComponents());
-
-
-        if (children.contains(actionEvent.getSource())){
-            JFileChooser fileChooser = new JFileChooser();
-            int option = fileChooser.showOpenDialog(this);
-
-            if(option == JFileChooser.APPROVE_OPTION){
-                File f = fileChooser.getSelectedFile();
-                String filepath=f.getPath();
-                try{
-                    if(actionEvent.getSource() == openRom) {
-                        chip.loadProgram(filepath);
-                        drawUpdates();
-                    } else if (actionEvent.getSource() == saveState){
-                        chip.saveState(fileChooser.getSelectedFile().getPath());
-                    } else if (actionEvent.getSource() == loadState){
-                        chip.loadState(fileChooser.getSelectedFile().getPath());
-                    }
-                }catch (Exception ex) {ex.printStackTrace();  }
-            }
-
-
-        }
-
-
+        topMenu.onFileMenuItemsClicked(actionEvent);
     }
 }
