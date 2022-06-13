@@ -9,6 +9,8 @@ import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.io.File;
+import java.util.Arrays;
+import java.util.List;
 
 public class DisplayFrame extends JFrame implements KeyListener, ActionListener {
     public static volatile boolean keyPressed;
@@ -118,6 +120,8 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
         options.add(changeColors);
         options.add(changeClockSpeed);
 
+        changeControls.addActionListener(this);
+
         topMenu.add(file);
         topMenu.add(options);
         setJMenuBar(topMenu);
@@ -125,8 +129,10 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
 
     @Override
     public void actionPerformed(ActionEvent actionEvent) {
-        //SPAGHET
-        if(actionEvent.getSource() == openRom){
+        List<Component> children = Arrays.asList(file.getMenuComponents());
+
+
+        if (children.contains(actionEvent.getSource())){
             JFileChooser fileChooser = new JFileChooser();
             int option = fileChooser.showOpenDialog(this);
 
@@ -134,37 +140,19 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
                 File f = fileChooser.getSelectedFile();
                 String filepath=f.getPath();
                 try{
-                    chip.loadProgram(filepath);
-                    drawUpdates();
+                    if(actionEvent.getSource() == openRom) {
+                        chip.loadProgram(filepath);
+                        drawUpdates();
+                    } else if (actionEvent.getSource() == saveState){
+                        chip.saveState(fileChooser.getSelectedFile().getPath());
+                    } else if (actionEvent.getSource() == loadState){
+                        chip.loadState(fileChooser.getSelectedFile().getPath());
+                    }
                 }catch (Exception ex) {ex.printStackTrace();  }
-
             }
-        } else if (actionEvent.getSource() == saveState){
-            JFileChooser fileChooser = new JFileChooser();
-            int option = fileChooser.showOpenDialog(this);
 
-            if (option == JFileChooser.APPROVE_OPTION){
-                try{
-                    chip.saveState(fileChooser.getSelectedFile().getPath());
-                } catch (Exception ex){
-                    ex.printStackTrace();
-                }
 
-            }
-        } else if (actionEvent.getSource() == loadState){
-            JFileChooser fileChooser = new JFileChooser();
-            int option = fileChooser.showOpenDialog(this);
-
-            if (option == JFileChooser.APPROVE_OPTION){
-                try{
-                    chip.loadState(fileChooser.getSelectedFile().getPath());
-                } catch (Exception ex){
-                    ex.printStackTrace();
-                }
-
-            }
         }
-
 
 
     }
