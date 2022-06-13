@@ -1,13 +1,17 @@
 package emu;
 
 import chip.Chip;
-
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
 
 public class TopMenu{
 
@@ -19,15 +23,15 @@ public class TopMenu{
     private DisplayFrame displayFrame;
     private Chip chip;
 
-    char[] controls = {'1','2','3','Q','W','E','A','S','D','Z','X','C','4','R','F','V'};
+    List<Character> controls;
     TopMenu(DisplayFrame displayFrame, Chip chip){
         this.displayFrame=displayFrame;
         this.chip=chip;
+        controls = new ArrayList<>(displayFrame.getKeyIdToKey().keySet());
     }
 
     public void addTopMenuBar() {
         topMenu = new JMenuBar();
-
         file=new JMenu("File");
         openRom = new JMenuItem("Open ROM");
         saveState = new JMenuItem("Save State");
@@ -37,7 +41,6 @@ public class TopMenu{
         file.add(saveState);
         file.add(loadState);
 
-        file.addActionListener(displayFrame); //lesht, s'punon
         openRom.addActionListener(displayFrame);
         saveState.addActionListener(displayFrame);
         loadState.addActionListener(displayFrame);
@@ -52,6 +55,7 @@ public class TopMenu{
         options.add(changeClockSpeed);
 
         changeControls.addActionListener(displayFrame);
+        changeClockSpeed.addActionListener(displayFrame);
 
         topMenu.add(file);
         topMenu.add(options);
@@ -61,26 +65,28 @@ public class TopMenu{
     public void openControlsWindow(){
         JFrame controlsWindow = new JFrame("Change controls");
         JPanel panel = new JPanel();
-
-        for (char key : controls){
-            JButton button = new JButton(String.valueOf(key));
-            button.addActionListener((actionEvent -> {}));
-
-
+        for (Character key : controls){
+            JButton button = new JButton(displayFrame.getKeyIdToKey().get(key) + " - " + String.valueOf(key));
+            button.addActionListener(
+                    actionEvent -> {String input = JOptionPane.showInputDialog(controlsWindow,"Enter key");
+                        displayFrame.changeControl(button.getText().charAt(button.getText().indexOf('-') + 2), input.toUpperCase().charAt(0));
+                        button.setText(displayFrame.getKeyIdToKey().get(input.toUpperCase().charAt(0)) + " - " + String.valueOf(input.toUpperCase().charAt(0)));
+                        controls = controls.stream().map(x->{
+                            if(x == key) return input.toUpperCase().charAt(0);
+                            else return x;
+                        }).collect(Collectors.toList());
+                    }
+            );
             panel.add(button);
         }
-
-
-
-
         controlsWindow.add(panel);
-        controlsWindow.setSize(new Dimension(640, 320));
+        controlsWindow.setSize(new Dimension(640 / 2, 340 / 2));
+        controlsWindow.setResizable(false);
         controlsWindow.setVisible(true);
     }
 
     public void onFileMenuItemsClicked(ActionEvent actionEvent) {
         List<Component> children = Arrays.asList(file.getMenuComponents());
-
 
         if (children.contains(actionEvent.getSource())){
             JFileChooser fileChooser = new JFileChooser();
@@ -104,8 +110,24 @@ public class TopMenu{
 
         if(actionEvent.getSource()==changeControls){
             openControlsWindow();
+        } else if(actionEvent.getSource()==changeClockSpeed){
+            openClockDialog();
         }
 
 
     }
+
+    private void openClockDialog(){
+        try{
+            String input = JOptionPane.showInputDialog("Enter the new clock rate", JOptionPane.OK_OPTION);
+            int x = Integer.parseInt(input);
+            if(x == 0) JOptionPane.showMessageDialog(displayFrame, "0 is not allowed!", "Error", JOptionPane.ERROR_MESSAGE);
+            else MainLoop.rate = 1000 / x;
+
+        } catch (NumberFormatException e){
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(displayFrame, "Please enter an integer", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
 }

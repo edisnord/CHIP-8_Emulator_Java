@@ -8,13 +8,19 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
 public class DisplayFrame extends JFrame implements KeyListener, ActionListener {
     public static volatile boolean keyPressed;
     private static final long serialVersionUID = 1L;
     private DisplayPanel panel;
     private static int[] keyBuffer = new int[16];
-    private int[] keyIdToKey;
+    //private int[] keyIdToKey;
+    LinkedHashMap<Character, Integer> keyIdToKey;
 
     private Chip chip;
 
@@ -23,9 +29,12 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
 
     public DisplayFrame(Chip chip) {
         this.chip = chip;
+        keyIdToKey = new LinkedHashMap<>();
+        fillKeyIds();
         topMenu = new TopMenu(this, this.chip);
         setPreferredSize(new Dimension(640, 320));
         pack();
+        setResizable(false);
         setPreferredSize(new Dimension(640 + getInsets().left + getInsets().right, 320 + getInsets().top + getInsets().bottom));
         panel = new DisplayPanel(chip);
         setLayout(new BorderLayout());
@@ -36,32 +45,25 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
         topMenu.addTopMenuBar();
         setVisible(true);
         addKeyListener(this);
-
-        keyIdToKey = new int[256];
-        fillKeyIds();
     }
 
     private void fillKeyIds() {
-        for (int i = 0; i < keyIdToKey.length; i++) {
-            keyIdToKey[i] = -1;
-        }
-
-        keyIdToKey['1'] = 1;
-        keyIdToKey['2'] = 2;
-        keyIdToKey['3'] = 3;
-        keyIdToKey['Q'] = 4;
-        keyIdToKey['W'] = 5;
-        keyIdToKey['E'] = 6;
-        keyIdToKey['A'] = 7;
-        keyIdToKey['S'] = 8;
-        keyIdToKey['D'] = 9;
-        keyIdToKey['Z'] = 0xA;
-        keyIdToKey['X'] = 0;
-        keyIdToKey['C'] = 0xB;
-        keyIdToKey['4'] = 0xC;
-        keyIdToKey['R'] = 0xD;
-        keyIdToKey['F'] = 0xE;
-        keyIdToKey['V'] = 0xF;
+        keyIdToKey.put('1', 1);
+        keyIdToKey.put('2', 2);
+        keyIdToKey.put('3', 3);
+        keyIdToKey.put('Q', 4);
+        keyIdToKey.put('W', 5);
+        keyIdToKey.put('E', 6);
+        keyIdToKey.put('S', 8);
+        keyIdToKey.put('A', 7);
+        keyIdToKey.put('D', 9);
+        keyIdToKey.put('Z', 0xA);
+        keyIdToKey.put('X', 0);
+        keyIdToKey.put('C', 0xB);
+        keyIdToKey.put('4', 0xC);
+        keyIdToKey.put('R', 0xD);
+        keyIdToKey.put('F', 0xE);
+        keyIdToKey.put('V', 0xF);
     }
 
     public void drawUpdates(){
@@ -70,17 +72,23 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
 
     @Override
     public void keyPressed(KeyEvent e) {
-        if (keyIdToKey[e.getKeyCode()] != -1) {
-            DisplayFrame.keyBuffer[keyIdToKey[e.getKeyCode()]] = 1;
+        try{
+            keyIdToKey.get((char)e.getKeyCode());
+            DisplayFrame.keyBuffer[keyIdToKey.get((char)e.getKeyCode())] = 1;
             DisplayFrame.keyPressed = true;
+        }catch (Exception ex){
+
         }
     }
 
     @Override
     public void keyReleased(KeyEvent e) {
-        if (keyIdToKey[e.getKeyCode()] != -1) {
+        try{
+            keyIdToKey.get((char)e.getKeyCode());
+            DisplayFrame.keyBuffer[keyIdToKey.get((char)e.getKeyCode())] = 0;
             DisplayFrame.keyPressed = false;
-            DisplayFrame.keyBuffer[keyIdToKey[e.getKeyCode()]] = 0;
+        }catch (Exception ex){
+
         }
     }
 
@@ -96,5 +104,16 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
     @Override
     public void actionPerformed(ActionEvent actionEvent) {
         topMenu.onFileMenuItemsClicked(actionEvent);
+    }
+
+    public void changeControl(Character prevVal, Character newVal){
+        int value = keyIdToKey.get(prevVal);
+        keyIdToKey.remove(prevVal);
+        keyIdToKey.put(newVal, value);
+
+    }
+
+    public HashMap<Character, Integer> getKeyIdToKey() {
+        return keyIdToKey;
     }
 }

@@ -1,13 +1,14 @@
-import chip.Chip;
-import emu.DisplayPanel;
-import emu.DisplayFrame;
+package emu;
 
-public class Main extends Thread{
+import chip.Chip;
+
+public class MainLoop extends Thread{
     private Chip chip8;
     private DisplayPanel frame;
     private DisplayFrame DisplayFrame;
+    static int rate = 16;
 
-    public Main()
+    public MainLoop()
     {
         chip8 = new Chip();
         chip8.init();
@@ -25,7 +26,7 @@ public class Main extends Thread{
                 chip8.removeDrawFlag();
             }
             try {
-                Thread.sleep(16);
+                Thread.sleep(MainLoop.rate);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -33,7 +34,7 @@ public class Main extends Thread{
     }
 
     public static void main(String[] args) {
-        var main = new Main();
+        var main = new MainLoop();
         main.start();
     }
 
