@@ -32,10 +32,10 @@ public class DisplayFrame extends JFrame implements KeyListener, ActionListener 
         keyIdToKey = new LinkedHashMap<>();
         fillKeyIds();
         topMenu = new TopMenu(this, this.chip);
-        setPreferredSize(new Dimension(640, 320));
         pack();
         setResizable(false);
-        setPreferredSize(new Dimension(640 + getInsets().left + getInsets().right, 320 + getInsets().top + getInsets().bottom));
+        setPreferredSize(new Dimension(640 + getInsets().left + getInsets().right,
+                    340 + getInsets().top + getInsets().bottom));
         panel = new DisplayPanel(chip);
         setLayout(new BorderLayout());
         add(panel, BorderLayout.CENTER);

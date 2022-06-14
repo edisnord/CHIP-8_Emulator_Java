@@ -20,6 +20,7 @@ public class Chip {
 
     private Memory memory;
 
+    public boolean isPaused;
     /**
      * 16-bit (only 12 are used) to point to a specific point in the memory
      */
@@ -63,6 +64,8 @@ public class Chip {
 
         memory = new Memory();
         stack = new Stack<>();
+
+        isPaused = false;
 
         I = 0x0;
         pc = 0x200;

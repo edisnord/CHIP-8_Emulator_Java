@@ -1,11 +1,10 @@
 package emu;
 
 import chip.Chip;
+
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
+import java.awt.event.*;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,37 +12,42 @@ import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
-public class TopMenu{
+public class TopMenu {
 
     private JMenuBar topMenu;
+    private String currentRom = "ROMS/IBM Logo.ch8";
 
     private JMenu file, options;
-    private JMenuItem openRom, saveState, loadState, changeControls, changeColors, changeClockSpeed;
+    private JMenuItem openRom, saveState, loadState, changeControls, changeColors, changeClockSpeed, resetRom;
 
     private DisplayFrame displayFrame;
     private Chip chip;
 
     List<Character> controls;
-    TopMenu(DisplayFrame displayFrame, Chip chip){
-        this.displayFrame=displayFrame;
-        this.chip=chip;
+
+    TopMenu(DisplayFrame displayFrame, Chip chip) {
+        this.displayFrame = displayFrame;
+        this.chip = chip;
         controls = new ArrayList<>(displayFrame.getKeyIdToKey().keySet());
     }
 
     public void addTopMenuBar() {
         topMenu = new JMenuBar();
-        file=new JMenu("File");
+        file = new JMenu("File");
         openRom = new JMenuItem("Open ROM");
+        resetRom = new JMenuItem("Reset ROM");
         saveState = new JMenuItem("Save State");
         loadState = new JMenuItem("Load State");
 
         file.add(openRom);
         file.add(saveState);
         file.add(loadState);
+        file.add(resetRom);
 
         openRom.addActionListener(displayFrame);
         saveState.addActionListener(displayFrame);
         loadState.addActionListener(displayFrame);
+        resetRom.addActionListener(displayFrame);
 
         options = new JMenu("Options");
         changeControls = new JMenuItem("Change Controls");
@@ -56,23 +60,39 @@ public class TopMenu{
 
         changeControls.addActionListener(displayFrame);
         changeClockSpeed.addActionListener(displayFrame);
+        changeColors.addActionListener(displayFrame);
 
         topMenu.add(file);
         topMenu.add(options);
         displayFrame.setJMenuBar(topMenu);
     }
 
-    public void openControlsWindow(){
+    public void openControlsWindow() {
         JFrame controlsWindow = new JFrame("Change controls");
+        controlsWindow.addWindowListener(new WindowAdapter() {
+            public void windowClosing(WindowEvent e) {
+                chip.isPaused = false;
+            }
+            @Override
+            public void windowOpened(WindowEvent e) {
+                chip.isPaused = true;
+            }
+        });
+
         JPanel panel = new JPanel();
-        for (Character key : controls){
+        for (Character key : controls) {
             JButton button = new JButton(displayFrame.getKeyIdToKey().get(key) + " - " + String.valueOf(key));
             button.addActionListener(
-                    actionEvent -> {String input = JOptionPane.showInputDialog(controlsWindow,"Enter key");
+                    actionEvent -> {
+                        String input = JOptionPane.showInputDialog(controlsWindow, "Enter key");
+                        if (input.length() > 1) {
+                            JOptionPane.showMessageDialog(displayFrame, "Inputs of more than one character are not allowed", "Error", JOptionPane.ERROR_MESSAGE);
+                            return;
+                        }
                         displayFrame.changeControl(button.getText().charAt(button.getText().indexOf('-') + 2), input.toUpperCase().charAt(0));
-                        button.setText(displayFrame.getKeyIdToKey().get(input.toUpperCase().charAt(0)) + " - " + String.valueOf(input.toUpperCase().charAt(0)));
-                        controls = controls.stream().map(x->{
-                            if(x == key) return input.toUpperCase().charAt(0);
+                        button.setText(displayFrame.getKeyIdToKey().get(input.toUpperCase().charAt(0)) + " - " + input.toUpperCase().charAt(0));
+                        controls = controls.stream().map(x -> {
+                            if (x == key) return input.toUpperCase().charAt(0);
                             else return x;
                         }).collect(Collectors.toList());
                     }
@@ -87,47 +107,73 @@ public class TopMenu{
 
     public void onFileMenuItemsClicked(ActionEvent actionEvent) {
         List<Component> children = Arrays.asList(file.getMenuComponents());
+        JFileChooser fileChooser = null;
+        int option = 0;
+        if (children.contains(actionEvent.getSource())) {
+            if(actionEvent.getSource() != resetRom) {
+                chip.isPaused = true;
+                fileChooser = new JFileChooser();
+                option = fileChooser.showOpenDialog(displayFrame);
+            }
 
-        if (children.contains(actionEvent.getSource())){
-            JFileChooser fileChooser = new JFileChooser();
-            int option = fileChooser.showOpenDialog(displayFrame);
-
-            if(option == JFileChooser.APPROVE_OPTION){
-                File f = fileChooser.getSelectedFile();
-                String filepath=f.getPath();
-                try{
-                    if(actionEvent.getSource() == openRom) {
+            if (option == JFileChooser.APPROVE_OPTION) {
+                File f;
+                String filepath = null;
+                if(actionEvent.getSource() != resetRom) {
+                    f = fileChooser.getSelectedFile();
+                   filepath = f.getPath();
+                }
+                try {
+                    if (actionEvent.getSource() == openRom) {
+                        currentRom = filepath;
                         chip.loadProgram(filepath);
                         displayFrame.drawUpdates();
-                    } else if (actionEvent.getSource() == saveState){
+                    } else if (actionEvent.getSource() == saveState) {
                         chip.saveState(fileChooser.getSelectedFile().getPath());
-                    } else if (actionEvent.getSource() == loadState){
+                    } else if (actionEvent.getSource() == loadState) {
                         chip.loadState(fileChooser.getSelectedFile().getPath());
+                    } else if (actionEvent.getSource() == resetRom) {
+                        chip.loadProgram(currentRom);
                     }
-                }catch (Exception ex) {ex.printStackTrace();  }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+
             }
+            chip.isPaused = false;
         }
 
-        if(actionEvent.getSource()==changeControls){
+        if (actionEvent.getSource() == changeControls) {
             openControlsWindow();
-        } else if(actionEvent.getSource()==changeClockSpeed){
+        } else if (actionEvent.getSource() == changeClockSpeed) {
             openClockDialog();
+        } else if (actionEvent.getSource() == changeColors) {
+            openColorPicker();
         }
 
 
     }
 
-    private void openClockDialog(){
-        try{
+    private void openColorPicker() {
+        JFrame cpick = new PickerFrame(displayFrame, chip);
+        cpick.setVisible(true);
+    }
+
+    private void openClockDialog() {
+        try {
+            int x = 0;
+            chip.isPaused = true;
             String input = JOptionPane.showInputDialog("Enter the new clock rate", JOptionPane.OK_OPTION);
-            int x = Integer.parseInt(input);
-            if(x == 0) JOptionPane.showMessageDialog(displayFrame, "0 is not allowed!", "Error", JOptionPane.ERROR_MESSAGE);
+            if(input != null) x = Integer.parseInt(input);
+            if (x == 0)
+                JOptionPane.showMessageDialog(displayFrame, "0 is not allowed!", "Error", JOptionPane.ERROR_MESSAGE);
             else MainLoop.rate = 1000 / x;
 
-        } catch (NumberFormatException e){
+        } catch (NumberFormatException e) {
             e.printStackTrace();
             JOptionPane.showMessageDialog(displayFrame, "Please enter an integer", "Error", JOptionPane.ERROR_MESSAGE);
         }
+        chip.isPaused = false;
     }
 
 }

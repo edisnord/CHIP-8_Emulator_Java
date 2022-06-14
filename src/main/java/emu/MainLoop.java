@@ -19,16 +19,18 @@ public class MainLoop extends Thread{
 
     public void run(){
         while (true){
-            chip8.run();
-            chip8.setKeyBuffer(DisplayFrame.getKeyBuffer());
-            if(chip8.needsRedraw()){
-                DisplayFrame.drawUpdates();
-                chip8.removeDrawFlag();
-            }
-            try {
-                Thread.sleep(MainLoop.rate);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+            if(!chip8.isPaused) {
+                chip8.run();
+                chip8.setKeyBuffer(DisplayFrame.getKeyBuffer());
+                if (chip8.needsRedraw()) {
+                    DisplayFrame.drawUpdates();
+                    chip8.removeDrawFlag();
+                }
+                }
+                try {
+                    Thread.sleep(MainLoop.rate);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
             }
         }
     }
