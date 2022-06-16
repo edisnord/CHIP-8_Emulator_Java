@@ -21,7 +21,7 @@ public class TopMenu {
     private String currentRom = "ROMS/IBM Logo.ch8";
 
     private JMenu file, options, memoryView;
-    private JMenuItem openRom, saveState, loadState, changeControls, changeColors, changeClockSpeed, resetRom, viewRam, memoryEntry;
+    private JMenuItem openRom, saveState, loadState, changeControls, changeColors, changeClockSpeed, resetRom, viewRam;
 
     private DisplayFrame displayFrame;
     private Chip chip;
@@ -68,12 +68,9 @@ public class TopMenu {
 
         memoryView = new JMenu("Memory View");
         viewRam = new JMenuItem("RAM usage");
-        memoryEntry = new JMenuItem("Memory entries");
 
         memoryView.add(viewRam);
-        memoryView.add(memoryEntry);
         viewRam.addActionListener(displayFrame);
-        memoryEntry.addActionListener(displayFrame);
 
         topMenu.add(file);
         topMenu.add(options);
