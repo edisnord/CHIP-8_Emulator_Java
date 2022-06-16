@@ -6,6 +6,9 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryUsage;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -17,13 +20,14 @@ public class TopMenu {
     private JMenuBar topMenu;
     private String currentRom = "ROMS/IBM Logo.ch8";
 
-    private JMenu file, options;
-    private JMenuItem openRom, saveState, loadState, changeControls, changeColors, changeClockSpeed, resetRom;
+    private JMenu file, options, memoryView;
+    private JMenuItem openRom, saveState, loadState, changeControls, changeColors, changeClockSpeed, resetRom, viewRam, memoryEntry;
 
     private DisplayFrame displayFrame;
     private Chip chip;
 
     List<Character> controls;
+
 
     TopMenu(DisplayFrame displayFrame, Chip chip) {
         this.displayFrame = displayFrame;
@@ -62,8 +66,18 @@ public class TopMenu {
         changeClockSpeed.addActionListener(displayFrame);
         changeColors.addActionListener(displayFrame);
 
+        memoryView = new JMenu("Memory View");
+        viewRam = new JMenuItem("RAM usage");
+        memoryEntry = new JMenuItem("Memory entries");
+
+        memoryView.add(viewRam);
+        memoryView.add(memoryEntry);
+        viewRam.addActionListener(displayFrame);
+        memoryEntry.addActionListener(displayFrame);
+
         topMenu.add(file);
         topMenu.add(options);
+        topMenu.add(memoryView);
         displayFrame.setJMenuBar(topMenu);
     }
 
@@ -149,9 +163,9 @@ public class TopMenu {
             openClockDialog();
         } else if (actionEvent.getSource() == changeColors) {
             openColorPicker();
+        } else if (actionEvent.getSource() == viewRam){
+            viewRamUsage();
         }
-
-
     }
 
     private void openColorPicker() {
@@ -176,4 +190,22 @@ public class TopMenu {
         chip.isPaused = false;
     }
 
+    private void viewRamUsage(){
+        JFrame ramMessage = new JFrame();
+        Runtime runtime = Runtime.getRuntime();
+
+        NumberFormat format = NumberFormat.getInstance();
+
+        StringBuilder sb = new StringBuilder();
+        long maxMemory = runtime.maxMemory();
+        long allocatedMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+
+        sb.append("Free memory: ").append(format.format(freeMemory / 1024)).append("\n");
+        sb.append("Allocated memory: ").append(format.format(allocatedMemory / 1024)).append("\n");
+        sb.append("Max memory: ").append(format.format(maxMemory / 1024)).append("\n");
+        sb.append("Total free memory: ").append(format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024)).append("\n");
+
+        JOptionPane.showConfirmDialog(ramMessage, sb, "RAM Information", JOptionPane.DEFAULT_OPTION);
+    }
 }
